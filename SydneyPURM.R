@@ -453,9 +453,7 @@ View_trials(multiQ_trials)
 
 
 #Final categorization!
-
-
-#TODO - NOTE: seems like we need to handle no_spec? -- i will deal with this soon.
+#TODO - put the categorized multi question trials back in. Each trial should only have one category
 
 # 
 # #####____Two Confederate Questions Trials_____#
@@ -473,7 +471,6 @@ View_trials(multiQ_trials)
 # View(twoQ_trials)
 # #write.csv(twoQ_trials, "/Users/sydneyliu/Desktop/purmTest/twoQ_trials.csv", row.names=FALSE)
 
-#SHOULD ALSO MAKE A QUESTION COL [TODO]
 
 
 
