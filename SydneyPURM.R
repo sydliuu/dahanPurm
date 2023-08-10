@@ -2,8 +2,8 @@ library(dplyr)
 library(plyr)
 library(stringr)
 
-
-Coding_data <- read.delim("/Users/sydneyliu/Desktop/purmTest/CardGameVideo_Fall2022_Spring2023_Data_v3.txt")
+#Coding_data <- read.delim("/Users/sydneyliu/Desktop/purmTest/CardGameVideo_Fall2022_Spring2023_Data_v3.txt")
+Coding_data <- read.delim("/Users/sydneyliu/Desktop/purmTest/CardGameVideo_Fall2022_Spring2023_Data_Aug.txt")
 
 #Accounting for camera malfunction in file 01
 Coding_data$Onset_sec[((Coding_data$Filename == "NEWCARD_01alter") & (Coding_data$Onset_sec >= 1200))]  = Coding_data[((Coding_data$Filename == "NEWCARD_01alter") & (Coding_data$Onset_sec >= 1200)), 5] + 1200
@@ -211,20 +211,6 @@ colContainsStr <- function(col, s){
   return(sum(str_detect(col, s), na.rm = TRUE) > 0)
 }
 
-#does s1 occur before s2?
-comesBefore <- function(col, s1, s2){
-  ind1 <- grep(s1, col)
-  ind2 <- grep(s2, col)
-  if (ind1[1] == -1 || ind2[1] == -1){
-    return(false)
-  }
-  return(ind1[1] < ind2[length(ind2)])
-  #does the first occurrence of s1 occur before the last occurrence of s2?
-}
-
-
-
-
 #####_____CATEGORIZE SPEC_____________######
 #Categorizes [spec?] question subsets
 
@@ -408,54 +394,71 @@ while (i <= nrow(full)){
 }
 
 
+
+##___BY QUESTION -> BY TRIAL___##
+qRows <- full[grep("spec?|any_type?|any_suit", full$Type), ] #rows with question (not including what_suit?) - there is one per qSubset
+qRows <- qRows %>% filter (qRows$TierName == "RightIndividualSpeech")  #exclude helper_ask rows
+trial_categories <- qRows %>% select(Filename, HandNb, TrialNb, Category)
+#View(trial_categories)
+
+## MULTI QUESTION ##
+#DUPLICATE trials - many categories per question? How to handle???
+tCat <- qRows %>% select(Filename, HandNb, TrialNb)
+multiQ_trials <- tCat[duplicated(tCat), ]
+#View(multiQ_trials)
+#these are the trials with multiple questions that were categorized separately. 
+#We want to just come up with a single catagorization per trial
+
+#View_trials(multiQ_trials)
+
+
+##TODO - fixing, NEEDS WORK .. small issue here with yes trials #
+Categorized_multiQ_trials <- function(mq_trials){
+  for (i in 1:nrow(mq_trials)){
+    tSubset <- TrialsOf(mq_trials[i, ])
+    mq_trials[i, "Category"] <- CategorizeQ(tSubset)
+  }
+  return(mq_trials)
+}
+
+#re-categorized (some incorrect)
+c_multiQ_trials <- Categorized_multiQ_trials(multiQ_trials)
+View(c_multiQ_trials)
+View_trials(c_multiQ_trials)
+
+
+#Final categorization! Coalescing double question trials into the correct category...
+full <- left_join(full, c_multiQ_trials, by = c('Filename', 'TrialNb', 'HandNb')) %>%
+  mutate(Category = ifelse(is.na(Category.y), Category.x, Category.y)) %>%
+  select(-Category.x, -Category.y)
+
+
+categories_by_trial <- full %>% 
+  select(Filename, TrialNb, HandNb, Category) %>%
+  distinct()
+
+
+
+#helper_ask trials? - what do we do w these
+#View_trials(categories_by_trial[categories_by_trial$Category == "helper_ask", ])
+
+View(categories_by_trial)
+
 spec_categorized <- full %>% filter(full$Type == "spec?")
 spec_trials <- TrialsOf(spec_categorized)
 View(spec_trials)
 
-
 any_type_cat <- full%>% filter(full$Type == "any_type?")
 any_type_Trials <- TrialsOf(any_type_cat)
 View(any_type_Trials)
-
-
 
 any_suit_cat <- full%>% filter(full$Type == "any_suit?")
 any_suit_Trials <- TrialsOf(any_suit_cat)
 View(any_suit_Trials)
 
 
-##___BY QUESTION -> BY TRIAL___##
-qRows <- full[grep("spec?|any_type?|any_suit", full$Type), ] #rows with question (not including what_suit?) - there is one per qSubset
-qRows <- qRows %>% filter (qRows$TierName == "RightIndividualSpeech")  #exclude helper_ask rows
-trial_categories <- qRows %>% select(Filename, HandNb, TrialNb, Category)
-View(trial_categories)
-
-## MULTI QUESTION ##
-#DUPLICATE trials - many categories per question? How to handle???
-tCat <- qRows %>% select(Filename, HandNb, TrialNb)
-multiQ_trials <- tCat[duplicated(tCat), ]
-View(multiQ_trials)
-#these are the trials with multiple questions that were categorized separately. 
-#We want to just come up with a single catagorization per trial
-
-View_trials(tCat[duplicated(tCat), ])
-
-Categorized_multiQ_trials <- function(mq_trials){
-  for (i in 1:nrow(mq_trials)){
-    tSubset <- TrialsOf(mq_trials[i, ])
-    mq_trials[i, "Category"] <- CategorizeQ(tSubset)
-  }
-  #return(mq_trials)
-}
-
-multiQ_trials <- Categorized_multiQ_trials(multiQ_trials)
-View_trials(multiQ_trials)
 
 
-#Final categorization!
-#TODO - put the categorized multi question trials back in. Each trial should only have one category
-
-# 
 # #####____Two Confederate Questions Trials_____#
 # qRows <- full[grep("\\?", full$Type), ]
 # confed_qRows <- qRows %>% filter(qRows$TierName == "RightIndividualSpeech")
@@ -470,10 +473,4 @@ View_trials(multiQ_trials)
 # #write.csv(twoQ, "/Users/sydneyliu/Desktop/purmTest/twoQ.csv", row.names=FALSE)
 # View(twoQ_trials)
 # #write.csv(twoQ_trials, "/Users/sydneyliu/Desktop/purmTest/twoQ_trials.csv", row.names=FALSE)
-
-
-
-
-
-
 
