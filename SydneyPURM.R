@@ -67,7 +67,7 @@ df <- Coding_data_trialnb
 contents <- distinct(df[grep("Contents", df$TierName), ])
 df_noContents <- distinct(df[-grep("Contents", df$TierName), ])
 
-mergedContents <- left_join(x=df_noContents, y=contents, by = c('Filename', 'Onset_sec', 'TrialNb', 'HandNb'))
+mergedContents <- left_join(x=df_noContents, y=contents, by = c('Filename', 'Onset_sec', 'TrialNb', 'HandNb'), relationship = "many-to-many")
 
 #Remove redundant hand and trial rows
 df_c <- mergedContents %>% transmute(Filename = Filename,
