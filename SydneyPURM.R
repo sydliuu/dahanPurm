@@ -97,37 +97,47 @@ df_handCodeMerge <- df_handCodeMerge[order(df_handCodeMerge$Filename, df_handCod
 full <- df_handCodeMerge %>% 
   mutate(Director = ifelse(str_detect(HANDCODE, '\\d'), "Confed", "Naive")) %>%
   select(-HANDCODE)
-View(full)
+#View(full)
+
+#######____REMOVE NAIVE DIRECTORS from full___##
+full <- full[full$Director == "Confed",]
 
 #####____ADD RANK COL, ADD Number of Answers (Answers Col) to full___###
 currTrial <- full[1, "TrialNb"]
 prevTrial <- full[1, "TrialNb"]
-rank <- 1
+#rank <- 1
 prevQ <- 1
 numAns <- 0
 for (r in 1:nrow(full)){
+  #update turnrank / trial number (didn't end up using turn rank...)
   currTrial <- full[r, "TrialNb"]
   if (currTrial != prevTrial){
     prevTrial <- currTrial
-    rank <- 1
+    #rank <- 1
   }
-  full[r, c("TurnRank")] <- rank
-  rank <- rank + 1
+  #full[r, c("TurnRank")] <- rank
+  #rank <- rank + 1
   
-  if (r != 1 && str_detect(full[r, "Type"], 'spec|any_type?|any_suit?')){ 
+  #update answers column
+  if (r == 1){
+    #do nothing
+  } else if (str_detect(full[r, "Type"], 'spec\\?|any_type\\?|any_suit\\?|no_type\\?|no_suit\\?')
+      || currTrial != prevTrial){ 
     full[prevQ, c("Answers")] <- numAns
     numAns <- 0
     prevQ <- r
-  } else if (r !=  1) {
+  } else {
     numAns <- numAns + 1
+    #fill in last trial
     full[r, c("Answers")] <- NA
+    if (r == nrow(full)){
+      full[prevQ, c("Answers")] <- numAns
+    }
   }
 }
+
 View(full)
 
-
-#######____REMOVE NAIVE DIRECTORS from full___##
-full <- full[full$Director == "Confed",]
 
 #######________TRIALS OF / TRIAL CONTEXT VIEWER FUNCTIONS_____##
 TrialsOf <- function(df_rows){
@@ -175,30 +185,26 @@ View_trials <- function(df_rows){
 #####_____CATEGORIZE_Q_____######
 #Calls helper functions for categorizing diff questions.
 CategorizeQ <- function(qSubset){
+  #change to question type?
   #Are we categorizing when the helper asks?
-  if (str_detect(qSubset$Type[1], "spec|any_type?|any_suit?") 
+  if (str_detect(qSubset$Type[1], "spec|any_type|any_suit|no_type|no_suit") 
       && (qSubset[1, "Director"] == "Confed" &&
-      qSubset[1, "TierName"] == "LeftIndividualSpeech"
-      || qSubset[1, "Director"] == "Naive" && 
-      qSubset[1, "TierName"] == "RightIndividualSpeech")
+      qSubset[1, "TierName"] == "LeftIndividualSpeech")
       ){
     return("helper_ask")
   }
-  #spec? & variations
-  #I believe variations should not occur if director is confed.(?)
-  if (qSubset[1, "Type"] == "spec?" ||
-      qSubset[1, "Type"] == "spec_2?" ||
-      qSubset[1, "Type"] == "spec_declarative"){
+  #spec?
+  if (qSubset[1, "Type"] == "spec?" || qSubset[1, "Type"] == "no_spec?"){
     return(Categorize_spec(qSubset))
   } 
   #no_spec would be dealt with separately: yes and no function differently there.
   
   #any_type?
-  else if (qSubset[1, "Type"] == "any_type?"){
+  else if (qSubset[1, "Type"] == "any_type?" || qSubset[1, "Type"] == "no_type?"){
     return(Categorize_anyType(qSubset))
   } 
   #any_suit
-  else if (qSubset[1, "Type"] == "any_suit?"){
+  else if (qSubset[1, "Type"] == "any_suit?" || qSubset[1, "Type"] == "no_suit?"){
     return (Categorize_anySuit(qSubset))
   }
   #else - ERROR or TODO
@@ -259,7 +265,8 @@ Categorize_spec <- function(qSubset){
       }
       #offer that is not the spec? content
       if (str_detect(qSubset$Type[i], "r_id")
-          && qSubset$Contents[i] != spec_card){
+          && qSubset$Contents[i] != spec_card
+          || qSubset$Type[i] == "r_num_type"){
         if (handedAlready){
           return("yes_hand_offer")
         }
@@ -325,11 +332,8 @@ Categorize_anySuit <- function(qSubset){
     } 
     return("no_but")
   } 
-  #I could truncate anything after what_suit? 
-  #but for now, I have hard coded since I wasn't 100% sure about how we were categorizing
-  
   #yes, what suit? list => yes polar
-  if (qSubset[2, "Type"] == "q_yes"
+  if (nrow(qSubset) > 2 && qSubset[2, "Type"] == "q_yes"
       && qSubset[3, "Type"] == "what_suit?"){
     return("yes_polar")
   }
@@ -361,20 +365,24 @@ Categorize_anySuit <- function(qSubset){
   
   return("any_suit_ERROR")
 }
+###
 
-
-##__CATEGORIZE FULL: Calling CategorizeQ on each question subset___##
+###__CATEGORIZE FULL: Calling CategorizeQ on each question subset___##
 #Now that CategorizeQ function exists, we must A) identify each question subset, and B) call CategorizeQ on it.
 i=1
 qSubset <- NA
 currQ <- 1
 endInd <- 1 #ending index of qSubset
+skipped <- c()
 while (i <= nrow(full)){
   #Answers column contains the number of "answers" (any row following said question, before the next question) for rows with Type question.
   #We use this column to subset based on question
   #(Note: Answers column contains NA if it is an "answer" row (rather than a question row) - this is the first if statement
-  if (is.na(full$Answers[i])){ #this if statement should not be entered, in theory, based on the way we increment i
-    print(i)
+  if (is.na(full$Answers[i])){ #this if statement should not be entered, in theory, based on the way we increment i... but if so its ok (see skipped df)
+    skipped <- skipped %>% append(i)
+    if (is.na(full[i, "Category"] == FALSE )){
+      full[i, "Category"] <- "skipped" #error check
+    }
     i <- i+1
   } 
   else { #it is a question row.
@@ -386,33 +394,43 @@ while (i <= nrow(full)){
     
     #Then we call CategorizeQ function on qSubset to determine the category
     full[i : endInd, "Category"] <- CategorizeQ(qSubset) 
+    full[i : endInd, "Question"] <- full[i, "Type"]
     
     #instead of incrementing i by 1 and visiting each row individually (as in a for loop),
     #we increment i by endInd, so as to hit the next question row (thus, a while loop, as i is not incremented by a constant)
     i <- endInd + 1
   }
 }
+###
+View(full)
+
+#TODO - no_spec? confed ask
+
+#error management (checking for issues - not sure why these rows were skipped, but it wouldn't be an issue for final categorization.)
+# View(full[skipped, ])
+# View_trials(full[skipped, ])
 
 
 
-##___BY QUESTION -> BY TRIAL___##
-qRows <- full[grep("spec?|any_type?|any_suit", full$Type), ] #rows with question (not including what_suit?) - there is one per qSubset
-qRows <- qRows %>% filter (qRows$TierName == "RightIndividualSpeech")  #exclude helper_ask rows
-trial_categories <- qRows %>% select(Filename, HandNb, TrialNb, Category)
-#View(trial_categories)
+
+###___BY QUESTION -> BY TRIAL___##
+qRows <- full[grep("spec\\?|any_type\\?|any_suit\\?|no_spec|no_type|no_suit", full$Type), ] #rows with question (not including what_suit?) - there is one per qSubset
+qRows <- qRows %>% filter (qRows$TierName == "RightIndividualSpeech")  #exclude helper_ask rows!!
+trial_categories <- qRows %>% select(Filename, HandNb, TrialNb, Question, Category)
+View(trial_categories)
 
 ## MULTI QUESTION ##
 #DUPLICATE trials - many categories per question? How to handle???
 tCat <- qRows %>% select(Filename, HandNb, TrialNb)
 multiQ_trials <- tCat[duplicated(tCat), ]
-#View(multiQ_trials)
+View_trials(multiQ_trials)
 #these are the trials with multiple questions that were categorized separately. 
 #We want to just come up with a single catagorization per trial
 
 #View_trials(multiQ_trials)
 
 
-##TODO - fixing, NEEDS WORK .. small issue here with yes trials #
+##TODO - double check #
 Categorized_multiQ_trials <- function(mq_trials){
   for (i in 1:nrow(mq_trials)){
     tSubset <- TrialsOf(mq_trials[i, ])
@@ -426,6 +444,7 @@ c_multiQ_trials <- Categorized_multiQ_trials(multiQ_trials)
 View(c_multiQ_trials)
 View_trials(c_multiQ_trials)
 
+temp <- full
 
 #Final categorization! Coalescing double question trials into the correct category...
 full <- left_join(full, c_multiQ_trials, by = c('Filename', 'TrialNb', 'HandNb')) %>%
@@ -434,28 +453,36 @@ full <- left_join(full, c_multiQ_trials, by = c('Filename', 'TrialNb', 'HandNb')
 
 
 categories_by_trial <- full %>% 
-  select(Filename, TrialNb, HandNb, Category) %>%
+  select(Filename, TrialNb, HandNb, Question, Category) %>%
   distinct()
 
-
-
-#helper_ask trials? - what do we do w these
-#View_trials(categories_by_trial[categories_by_trial$Category == "helper_ask", ])
-
+#Remove helper ask trials
+categories_by_trial <- categories_by_trial[categories_by_trial$Category != "helper_ask", ]
 View(categories_by_trial)
+#Final categorization ^^
+
 
 spec_categorized <- full %>% filter(full$Type == "spec?")
-spec_trials <- TrialsOf(spec_categorized)
+spec_trials <- TrialsOf(spec_categorized) 
 View(spec_trials)
 
 any_type_cat <- full%>% filter(full$Type == "any_type?")
 any_type_Trials <- TrialsOf(any_type_cat)
 View(any_type_Trials)
 
-any_suit_cat <- full%>% filter(full$Type == "any_suit?")
+any_suit_cat <- full %>% filter(full$Type == "any_suit?")
 any_suit_Trials <- TrialsOf(any_suit_cat)
 View(any_suit_Trials)
 
+other_question_trials <- full %>% 
+  filter(full$Question != "spec?", full$Question != "any_type?", full$Question != "any_suit?") %>%
+  select(Filename, TrialNb, HandNb, Question, Category)
+View(other_question_trials)
+
+View_trials(other_question_trials)
+
+View_trials(categories_by_trial %>% 
+       filter(categories_by_trial$Question != "spec?", categories_by_trial$Question != "any_type?", categories_by_trial$Question != "any_suit?"))
 
 
 
@@ -473,4 +500,6 @@ View(any_suit_Trials)
 # #write.csv(twoQ, "/Users/sydneyliu/Desktop/purmTest/twoQ.csv", row.names=FALSE)
 # View(twoQ_trials)
 # #write.csv(twoQ_trials, "/Users/sydneyliu/Desktop/purmTest/twoQ_trials.csv", row.names=FALSE)
+
+
 
