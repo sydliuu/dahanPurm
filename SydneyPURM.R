@@ -187,10 +187,7 @@ View_trials <- function(df_rows){
 CategorizeQ <- function(qSubset){
   #change to question type?
   #Are we categorizing when the helper asks?
-  if (str_detect(qSubset$Type[1], "spec|any_type|any_suit|no_type|no_suit") 
-      && (qSubset[1, "Director"] == "Confed" &&
-      qSubset[1, "TierName"] == "LeftIndividualSpeech")
-      ){
+  if (qSubset[1, "TierName"] == "LeftIndividualSpeech"){
     return("helper_ask")
   }
   #spec?
