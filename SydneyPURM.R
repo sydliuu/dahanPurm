@@ -218,8 +218,6 @@ colContainsStr <- function(col, s){
 }
 
 #####_____CATEGORIZE SPEC_____________######
-#Categorizes [spec?] question subsets
-
 Categorize_spec <- function(qSubset){
   spec_card <-  qSubset$Contents[1]
   
@@ -444,17 +442,32 @@ c_multiQ_trials <- Categorized_multiQ_trials(multiQ_trials)
 View(c_multiQ_trials)
 View_trials(c_multiQ_trials)
 
-temp <- full
+temp <- full #testing purposes
+#full<- temp
 
-#Final categorization! Coalescing double question trials into the correct category...
+#Final categorization! Coalescing double question trials into the correct category..
+#updated full.
 full <- left_join(full, c_multiQ_trials, by = c('Filename', 'TrialNb', 'HandNb')) %>%
   mutate(Category = ifelse(is.na(Category.y), Category.x, Category.y)) %>%
   select(-Category.x, -Category.y)
 
+#This function consolidates a df such that each trial is only one row
+ByTrial <- function(dataframe) {
+  dataframe %>% 
+    select(Filename, TrialNb, HandNb, Question, Category) %>%
+    distinct()
+}
 
-categories_by_trial <- full %>% 
-  select(Filename, TrialNb, HandNb, Question, Category) %>%
-  distinct()
+categories_by_trial <- ByTrial(full)
+View(categories_by_trial %>% filter(Category == "helper_ask"))
+View(categories_by_trial)
+
+# 
+# categories_by_trial <- full %>% 
+#   select(Filename, TrialNb, HandNb, Question, Category) %>%
+#   distinct()
+
+
 
 #Remove helper ask trials
 categories_by_trial <- categories_by_trial[categories_by_trial$Category != "helper_ask", ]
@@ -483,6 +496,49 @@ View_trials(other_question_trials)
 
 View_trials(categories_by_trial %>% 
        filter(categories_by_trial$Question != "spec?", categories_by_trial$Question != "any_type?", categories_by_trial$Question != "any_suit?"))
+
+#CHANGE HAND NUMBER TO INT (remove H)
+full$HandNb <- substring(full$HandNb, 2, 3) %>% as.numeric()
+View(full)
+
+alternating <- full %>% 
+  subset(grepl("alter", full$Filename)) %>%
+  ByTrial()
+
+blocked <- full %>%
+  subset(grepl("block", full$Filename)) %>%
+  ByTrial()
+
+View(alternating)
+View(blocked)
+
+altEarly <- alternating %>% filter(HandNb < 16)
+altLate <- alternating %>% filter(HandNb > 15)
+
+
+blockedEarly <- blocked %>% filter(HandNb < 8)
+blockedLate <- blocked %>% filter(HandNb > 7)
+
+
+table(altEarly$Category) 
+table(altLate$Category)
+  
+
+#offers-
+#   19 -> 21 (insignificant early to late)
+#prompted:unprompted
+#   (17, 13) -> (7, 14)
+
+table(blockedEarly$Category) 
+table(blockedLate$Category)
+
+#offers-
+#   12 -> 16 (insignificant early to late) 
+#prompted:unprompted
+#   (18, 6) -> (14, 15)
+
+#blocked has 28 offers, vs. alt 40 offers
+
 
 
 
