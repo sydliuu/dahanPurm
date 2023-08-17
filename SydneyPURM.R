@@ -690,3 +690,42 @@ for (i in 1:3){
 View(NbOffersAffirmative)
 
 write.csv(NbOffersAffirmative, "/Users/sydneyliu/Desktop/purmTest/affirmativeOfferNb.csv")
+
+
+##### NUMBER OF OFFER TRIALS BREAKDOWN (NEGATIVE ONLY)#####
+NbOffersNegative <- data.frame(TertileNb)
+for (i in 1:3){
+  alt_tertile_offer <- alt_cbt[alt_cbt$Tertile == i, ] %>%
+    filter(hasOffer) 
+  
+  alt_tertile_offer <-  alt_tertile_offer %>% filter(grepl("no_", alt_tertile_offer$Category))
+  
+  blk_tertile_offer <- blk_cbt[blk_cbt$Tertile == i, ] %>%
+    filter(hasOffer)
+  
+  blk_tertile_offer <-  blk_tertile_offer %>% filter(grepl("no_", blk_tertile_offer$Category))
+  
+  a_spec <- alt_tertile_offer[grepl("spec", alt_tertile_offer$Question), ] %>% nrow() 
+  a_type <- alt_tertile_offer[grepl("type", alt_tertile_offer$Question), ] %>% nrow()
+  a_suit <- alt_tertile_offer[grepl("suit", alt_tertile_offer$Question), ] %>% nrow()
+  a_offers <- nrow(alt_tertile_offer)
+  
+  NbOffersNegative[i, "Alt_spec"] <- a_spec / a_offers
+  NbOffersNegative[i, "Alt_type"] <- a_type / a_offers
+  NbOffersNegative[i, "Alt_suit"] <- a_suit / a_offers
+  NbOffersNegative[i, "Alt_total_offer"] <- a_offers
+  
+  b_spec <- blk_tertile_offer[grepl("spec", blk_tertile_offer$Question), ] %>% nrow()
+  b_type <- blk_tertile_offer[grepl("type", blk_tertile_offer$Question), ] %>% nrow()
+  b_suit <- blk_tertile_offer[grepl("suit", blk_tertile_offer$Question), ] %>% nrow()
+  b_offers <- nrow(blk_tertile_offer)
+  
+  NbOffersNegative[i, "Blk_spec"] <- b_spec / b_offers
+  NbOffersNegative[i, "Blk_type"] <- b_type / b_offers
+  NbOffersNegative[i, "Blk_suit"] <- b_suit / b_offers
+  NbOffersNegative[i, "Blk_total_offer"] <- b_offers
+}
+View(NbOffersNegative)
+
+write.csv(NbOffersNegative, "/Users/sydneyliu/Desktop/purmTest/negativeOfferNb.csv")
+
