@@ -136,7 +136,11 @@ for (r in 1:nrow(full)){
   }
 }
 
+
+#CHANGE HAND NUMBER TO INT (remove H)
+full$HandNb <- substring(full$HandNb, 2, 3) %>% as.numeric()
 View(full)
+
 
 
 #######________TRIALS OF / TRIAL CONTEXT VIEWER FUNCTIONS_____##
@@ -182,6 +186,20 @@ View_trials <- function(df_rows){
 # View(trials_zero_bad)
 
 
+
+
+#####________________OFFER type?_____#####
+OfferKind <- function(qSubset, kind){
+  if (qSubset[1, "Type"] == "spec?" || qSubset[1, "Type"] == "no_spec?"){
+    return(colContainsStr(qSubset$Type, kind))#r_id_type/suit/neither || r_num_type/suit/neither
+  }
+  if (kind == "neither"){
+    return(colContainsStr(qSubset$Type, "neither"))
+  }
+  return(NA)
+}
+
+
 #####_____CATEGORIZE_Q_____######
 #Calls helper functions for categorizing diff questions.
 CategorizeQ <- function(qSubset){
@@ -221,9 +239,13 @@ Categorize_spec <- function(qSubset){
   #no suit/no type "-0" in contents.
   #don't think I'll need to check the exact contents that are -0'ed - manually checking, seems fine so far
   if (colContainsStr(qSubset$Contents, "-0")){
-    if (colContainsStr(qSubset$Type, "r_id")){
+    if (colContainsStr(qSubset$Type, "r_id_suit")){
       #8D? I have no Diamonds (suitD-0). But I have an 8C (r_id)
-      return("no_but")
+      return("no_offerSuit")
+    } else if (colContainsStr(qSubset$Type, "r_id_type")){
+      return("no_offerType")
+    } else if (colContainsStr(qSubset$Type, "r_id_neither")){
+      return("no_offerNeither")
     }
     return("no_suit/no_type")
   }  
@@ -360,7 +382,9 @@ Categorize_anySuit <- function(qSubset){
   
   return("any_suit_ERROR")
 }
-###
+#########
+
+
 
 ###__CATEGORIZE FULL: Calling CategorizeQ on each question subset___##
 #Now that CategorizeQ function exists, we must A) identify each question subset, and B) call CategorizeQ on it.
@@ -390,6 +414,9 @@ while (i <= nrow(full)){
     #Then we call CategorizeQ function on qSubset to determine the category
     full[i : endInd, "Category"] <- CategorizeQ(qSubset) 
     full[i : endInd, "Question"] <- full[i, "Type"]
+    full[i : endInd, "OfferSuit"] <- OfferKind(qSubset, "suit")
+    full[i : endInd, "OfferType"] <- OfferKind(qSubset, "type")
+    full[i : endInd, "OfferNeither"] <- OfferKind(qSubset, "neither")
     
     #instead of incrementing i by 1 and visiting each row individually (as in a for loop),
     #we increment i by endInd, so as to hit the next question row (thus, a while loop, as i is not incremented by a constant)
@@ -399,6 +426,9 @@ while (i <= nrow(full)){
 ###
 View(full)
 
+temp <-full
+
+
 #TODO - no_spec? confed ask
 
 #error management (checking for issues - not sure why these rows were skipped, but it wouldn't be an issue for final categorization.)
@@ -406,19 +436,17 @@ View(full)
 # View_trials(full[skipped, ])
 
 
-
-
 ###___BY QUESTION -> BY TRIAL___##
 qRows <- full[grep("spec\\?|any_type\\?|any_suit\\?|no_spec|no_type|no_suit", full$Type), ] #rows with question (not including what_suit?) - there is one per qSubset
 qRows <- qRows %>% filter (qRows$TierName == "RightIndividualSpeech")  #exclude helper_ask rows!!
-trial_categories <- qRows %>% select(Filename, HandNb, TrialNb, Question, Category)
+trial_categories <- qRows %>% select(Filename, HandNb, TrialNb, Question, Category, OfferSuit, OfferType, OfferNeither)
 View(trial_categories)
 
 ## MULTI QUESTION ##
 #DUPLICATE trials - many categories per question? How to handle???
 tCat <- qRows %>% select(Filename, HandNb, TrialNb)
 multiQ_trials <- tCat[duplicated(tCat), ]
-View_trials(multiQ_trials)
+#View_trials(multiQ_trials)
 #these are the trials with multiple questions that were categorized separately. 
 #We want to just come up with a single catagorization per trial
 
@@ -430,34 +458,38 @@ Categorized_multiQ_trials <- function(mq_trials){
   for (i in 1:nrow(mq_trials)){
     tSubset <- TrialsOf(mq_trials[i, ])
     mq_trials[i, "Category"] <- CategorizeQ(tSubset)
+    mq_trials[i, "OfferSuit"] <- TRUE %in% tSubset$OfferSuit
+    mq_trials[i, "OfferType"] <-  TRUE %in% tSubset$OfferType
+    mq_trials[i, "OfferNeither"] <- TRUE %in% tSubset$OfferNeither
   }
   return(mq_trials)
 }
 
 #re-categorized (some incorrect)
 c_multiQ_trials <- Categorized_multiQ_trials(multiQ_trials)
-View(c_multiQ_trials)
-View_trials(c_multiQ_trials)
 
-temp <- full #testing purposes
-#full<- temp
 
 #Final categorization! Coalescing double question trials into the correct category..
 #updated full.
 full <- left_join(full, c_multiQ_trials, by = c('Filename', 'TrialNb', 'HandNb')) %>%
-  mutate(Category = ifelse(is.na(Category.y), Category.x, Category.y)) %>%
-  select(-Category.x, -Category.y)
+  mutate(Category = ifelse(is.na(Category.y), Category.x, Category.y),
+         OfferSuit = ifelse(is.na(OfferSuit.y), OfferSuit.x, OfferSuit.y),
+         OfferType = ifelse(is.na(OfferType.y), OfferType.x, OfferType.y),
+         OfferNeither = ifelse(is.na(OfferNeither.y), OfferNeither.x, OfferNeither.y)) %>%
+  select(-Category.x, -Category.y, -OfferSuit.x, -OfferSuit.y, -OfferType.x, -OfferType.y, -OfferNeither.x, -OfferNeither.y)
+View(full)
+
+#View_trials(c_multiQ_trials)
 
 #This function consolidates a df such that each trial is only one row
 ByTrial <- function(dataframe) {
   dataframe %>% 
-    select(Filename, TrialNb, HandNb, Question, Category) %>%
+    select(Filename, TrialNb, HandNb, Question, Category, OfferSuit, OfferType, OfferNeither) %>%
     distinct()
 }
 
 categories_by_trial <- ByTrial(full)
-View(categories_by_trial %>% filter(Category == "helper_ask"))
-View(categories_by_trial)
+#View(categories_by_trial)
 
 # 
 # categories_by_trial <- full %>% 
@@ -472,87 +504,189 @@ View(categories_by_trial)
 #Final categorization ^^
 
 
-spec_categorized <- full %>% filter(full$Type == "spec?")
-spec_trials <- TrialsOf(spec_categorized) 
-View(spec_trials)
+alternating <- categories_by_trial %>% 
+  subset(grepl("alter", categories_by_trial$Filename))
 
-any_type_cat <- full%>% filter(full$Type == "any_type?")
-any_type_Trials <- TrialsOf(any_type_cat)
-View(any_type_Trials)
+blocked <- categories_by_trial %>%
+  subset(grepl("block", categories_by_trial$Filename))
 
-any_suit_cat <- full %>% filter(full$Type == "any_suit?")
-any_suit_Trials <- TrialsOf(any_suit_cat)
-View(any_suit_Trials)
 
-other_question_trials <- full %>% 
-  filter(full$Question != "spec?", full$Question != "any_type?", full$Question != "any_suit?") %>%
-  select(Filename, TrialNb, HandNb, Question, Category)
-View(other_question_trials)
 
-View_trials(other_question_trials)
+#Tertile
+alternating <- alternating %>% 
+  mutate(Tertile = ifelse(HandNb<=5*2, 1, ifelse(HandNb<=10*2, 2, 3)))
 
-View_trials(categories_by_trial %>% 
-       filter(categories_by_trial$Question != "spec?", categories_by_trial$Question != "any_type?", categories_by_trial$Question != "any_suit?"))
-
-#CHANGE HAND NUMBER TO INT (remove H)
-full$HandNb <- substring(full$HandNb, 2, 3) %>% as.numeric()
-View(full)
-
-alternating <- full %>% 
-  subset(grepl("alter", full$Filename)) %>%
-  ByTrial()
-
-blocked <- full %>%
-  subset(grepl("block", full$Filename)) %>%
-  ByTrial()
+blocked <- blocked %>% 
+  mutate(Tertile = ifelse(HandNb<=5, 1, ifelse(HandNb<=10, 2, 3)))
 
 View(alternating)
 View(blocked)
 
-altEarly <- alternating %>% filter(HandNb < 16)
-altLate <- alternating %>% filter(HandNb > 15)
+alt_spec <- alternating[grepl("spec", alternating$Question), ]
+blk_spec <- blocked[grepl("spec", blocked$Question), ]
 
 
-blockedEarly <- blocked %>% filter(HandNb < 8)
-blockedLate <- blocked %>% filter(HandNb > 7)
+
+TertileNb <- c(1, 2, 3)
 
 
-table(altEarly$Category) 
-table(altLate$Category)
+##### SPEC TYPES OF OFFER BREAKDOWN (AFFIRMATIVE AND NEGATIVE)#####
+offerPattern <- data.frame(TertileNb)
+for (i in 1:3){
+  alt_tertile <- alt_spec[alt_spec$Tertile == i, ]
   
+  alt_SuitNb <- nrow(alt_tertile[alt_tertile$OfferSuit == TRUE, ])
+  alt_TypeNb <- nrow(alt_tertile[alt_tertile$OfferType == TRUE, ])
+  alt_NeitherNb <- nrow(alt_tertile[alt_tertile$OfferNeither == TRUE, ])
+  alt_totalOffers <- alt_SuitNb + alt_TypeNb + alt_NeitherNb
+  
+  offerPattern[i, "alt_OfferSuit"] <- alt_SuitNb / alt_totalOffers
+  offerPattern[i, "alt_OfferType"] <- alt_TypeNb / alt_totalOffers
+  offerPattern[i, "alt_OfferNeither"] <- alt_NeitherNb / alt_totalOffers
+  offerPattern[i, "alt_NbOffers"] <- alt_totalOffers
+  
+  blk_tertile <- blk_spec[blk_spec$Tertile == i, ]
+  
+  blk_SuitNb <- nrow(blk_tertile[blk_tertile$OfferSuit == TRUE, ])
+  blk_TypeNb <- nrow(blk_tertile[blk_tertile$OfferType == TRUE, ])
+  blk_NeitherNb <-nrow(blk_tertile[blk_tertile$OfferNeither == TRUE, ])
+  blk_totalOffers <- blk_SuitNb + blk_TypeNb + blk_NeitherNb
+  
+  offerPattern[i, "blk_OfferSuit"] <- blk_SuitNb / blk_totalOffers
+  offerPattern[i, "blk_OfferType"] <- blk_TypeNb / blk_totalOffers
+  offerPattern[i, "blk_OfferNeither"] <- blk_NeitherNb / blk_totalOffers
+  offerPattern[i, "blk_NbOffers"] <- blk_totalOffers
+}
 
-#offers-
-#   19 -> 21 (insignificant early to late)
-#prompted:unprompted
-#   (17, 13) -> (7, 14)
+View(offerPattern)
+write.csv(offerPattern, "/Users/sydneyliu/Desktop/purmTest/OfferBreakdown_allSpec.csv")
 
-table(blockedEarly$Category) 
-table(blockedLate$Category)
+##### SPEC TYPES OF OFFER BREAKDOWN (ONLY AFFIRMATIVE) #####
+percent_affirmSpec_offers <- nrow(affirmativeOnly(alt_spec)) / nrow(alt_spec)
+print(percent_affirmSpec_offers)
 
-#offers-
-#   12 -> 16 (insignificant early to late) 
-#prompted:unprompted
-#   (18, 6) -> (14, 15)
+View_trials(alt_spec %>% affirmativeOnly())
 
-#blocked has 28 offers, vs. alt 40 offers
+affirmativeOnly <- function(df){
+  df %>% filter(grepl("no_", df$Category) == FALSE)
+}
 
-
-
-
-# #####____Two Confederate Questions Trials_____#
-# qRows <- full[grep("\\?", full$Type), ]
-# confed_qRows <- qRows %>% filter(qRows$TierName == "RightIndividualSpeech")
-# qTrials <- confed_qRows %>% select(Filename, HandNb, TrialNb) 
-# twoQ_trials <- qTrials[duplicated(qTrials), ] %>% TrialsOf
-# 
-# 
-# 
-# 
-# twoQ <- twoQ_trials[grep("\\?", twoQ_trials$Type), ]
-# View(twoQ)
-# #write.csv(twoQ, "/Users/sydneyliu/Desktop/purmTest/twoQ.csv", row.names=FALSE)
-# View(twoQ_trials)
-# #write.csv(twoQ_trials, "/Users/sydneyliu/Desktop/purmTest/twoQ_trials.csv", row.names=FALSE)
+TertileNb <- c(1, 2, 3)
+offerPatternAffirmSpec <- data.frame(TertileNb)
 
 
+for (i in 1:3){
+  alt_tertile <- alt_spec[alt_spec$Tertile == i, ]
+  
+  alt_SuitNb <- nrow(alt_tertile[alt_tertile$OfferSuit == TRUE, ] %>% affirmativeOnly())
+  alt_TypeNb <- nrow(alt_tertile[alt_tertile$OfferType == TRUE, ] %>% affirmativeOnly())
+  alt_NeitherNb <- nrow(alt_tertile[alt_tertile$OfferNeither == TRUE, ] %>% affirmativeOnly())
+  alt_totalOffers <- alt_SuitNb + alt_TypeNb + alt_NeitherNb
+  
+  offerPatternAffirmSpec[i, "alt_OfferSuit"] <- alt_SuitNb / alt_totalOffers
+  offerPatternAffirmSpec[i, "alt_OfferType"] <- alt_TypeNb / alt_totalOffers
+  offerPatternAffirmSpec[i, "alt_OfferNeither"] <- alt_NeitherNb / alt_totalOffers
+  offerPatternAffirmSpec[i, "alt_NbOffers"] <- alt_totalOffers
+  
+  blk_tertile <- blk_spec[blk_spec$Tertile == i, ]
+  
+  blk_SuitNb <- nrow(blk_tertile[blk_tertile$OfferSuit == TRUE, ]  %>% affirmativeOnly())
+  blk_TypeNb <- nrow(blk_tertile[blk_tertile$OfferType == TRUE, ]  %>% affirmativeOnly())
+  blk_NeitherNb <-nrow(blk_tertile[blk_tertile$OfferNeither == TRUE, ]  %>% affirmativeOnly())
+  blk_totalOffers <- blk_SuitNb + blk_TypeNb + blk_NeitherNb
+  
+  offerPatternAffirmSpec[i, "blk_OfferSuit"] <- blk_SuitNb / blk_totalOffers
+  offerPatternAffirmSpec[i, "blk_OfferType"] <- blk_TypeNb / blk_totalOffers
+  offerPatternAffirmSpec[i, "blk_OfferNeither"] <- blk_NeitherNb / blk_totalOffers
+  offerPatternAffirmSpec[i, "blk_NbOffers"] <- blk_totalOffers
+}
 
+
+View(offerPatternAffirmSpec)
+write.csv(offerPatternAffirmSpec, "/Users/sydneyliu/Desktop/purmTest/OfferBreakdown_yesSpec.csv")
+
+
+####
+
+cbt <- categories_by_trial
+cbt <- cbt %>% 
+  mutate(hasOffer = ifelse(is.na(OfferSuit), OfferNeither, OfferSuit | OfferType | OfferNeither))
+View(cbt)
+
+alt_cbt <- cbt[grepl("alter", cbt$Filename), ] %>% 
+  mutate(Tertile = ifelse(HandNb<=5*2, 1, ifelse(HandNb<=10*2, 2, 3)))
+
+blk_cbt <- cbt[grepl("block", cbt$Filename), ] %>% 
+  mutate(Tertile = ifelse(HandNb<=5, 1, ifelse(HandNb<=10, 2, 3)))
+
+View(alt_cbt)
+View(blk_cbt)
+
+##### NUMBER OF OFFER TRIALS BREAKDOWN (ALL)#####
+NbOffers <- data.frame(TertileNb)
+
+for (i in 1:3){
+  alt_tertile_offer <- alt_cbt[alt_cbt$Tertile == i, ] %>%
+    filter(hasOffer)
+  
+  blk_tertile_offer <- blk_cbt[blk_cbt$Tertile == i, ] %>%
+    filter(hasOffer)
+  
+  a_spec <- alt_tertile_offer[grepl("spec", alt_tertile_offer$Question), ] %>% nrow() 
+  a_type <- alt_tertile_offer[grepl("type", alt_tertile_offer$Question), ] %>% nrow()
+  a_suit <- alt_tertile_offer[grepl("suit", alt_tertile_offer$Question), ] %>% nrow()
+  a_offers <- nrow(alt_tertile_offer)
+  
+  NbOffers[i, "Alt_spec"] <- a_spec / a_offers
+  NbOffers[i, "Alt_type"] <- a_type / a_offers
+  NbOffers[i, "Alt_suit"] <- a_suit / a_offers
+  NbOffers[i, "Alt_total_offer"] <- a_offers
+  
+  b_spec <- blk_tertile_offer[grepl("spec", blk_tertile_offer$Question), ] %>% nrow()
+  b_type <- blk_tertile_offer[grepl("type", blk_tertile_offer$Question), ] %>% nrow()
+  b_suit <- blk_tertile_offer[grepl("suit", blk_tertile_offer$Question), ] %>% nrow()
+  b_offers <- nrow(blk_tertile_offer)
+  
+  NbOffers[i, "Blk_spec"] <- b_spec / b_offers
+  NbOffers[i, "Blk_type"] <- b_type / b_offers
+  NbOffers[i, "Blk_suit"] <- b_suit / b_offers
+  NbOffers[i, "Blk_total_offer"] <- b_offers
+}
+View(NbOffers)
+
+write.csv(NbOffers, "/Users/sydneyliu/Desktop/purmTest/allOfferNb.csv")
+
+##### NUMBER OF OFFER TRIALS BREAKDOWN (AFFIRMATIVE ONLY)#####
+NbOffersAffirmative <- data.frame(TertileNb)
+for (i in 1:3){
+  alt_tertile_offer <- alt_cbt[alt_cbt$Tertile == i, ] %>%
+    filter(hasOffer) %>%
+    affirmativeOnly()
+  
+  blk_tertile_offer <- blk_cbt[blk_cbt$Tertile == i, ] %>%
+    filter(hasOffer) %>%
+    affirmativeOnly()
+  
+  a_spec <- alt_tertile_offer[grepl("spec", alt_tertile_offer$Question), ] %>% nrow() 
+  a_type <- alt_tertile_offer[grepl("type", alt_tertile_offer$Question), ] %>% nrow()
+  a_suit <- alt_tertile_offer[grepl("suit", alt_tertile_offer$Question), ] %>% nrow()
+  a_offers <- nrow(alt_tertile_offer)
+  
+  NbOffersAffirmative[i, "Alt_spec"] <- a_spec / a_offers
+  NbOffersAffirmative[i, "Alt_type"] <- a_type / a_offers
+  NbOffersAffirmative[i, "Alt_suit"] <- a_suit / a_offers
+  NbOffersAffirmative[i, "Alt_total_offer"] <- a_offers
+  
+  b_spec <- blk_tertile_offer[grepl("spec", blk_tertile_offer$Question), ] %>% nrow()
+  b_type <- blk_tertile_offer[grepl("type", blk_tertile_offer$Question), ] %>% nrow()
+  b_suit <- blk_tertile_offer[grepl("suit", blk_tertile_offer$Question), ] %>% nrow()
+  b_offers <- nrow(blk_tertile_offer)
+  
+  NbOffersAffirmative[i, "Blk_spec"] <- b_spec / b_offers
+  NbOffersAffirmative[i, "Blk_type"] <- b_type / b_offers
+  NbOffersAffirmative[i, "Blk_suit"] <- b_suit / b_offers
+  NbOffersAffirmative[i, "Blk_total_offer"] <- b_offers
+}
+View(NbOffersAffirmative)
+
+write.csv(NbOffersAffirmative, "/Users/sydneyliu/Desktop/purmTest/affirmativeOfferNb.csv")
